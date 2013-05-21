@@ -16,12 +16,12 @@ expire_cache = function() {
 	db.execute('DELETE FROM cache WHERE expiration <= ?', timestamp);
 	db.close();
 
-	Ti.API.debug('[CACHE] EXPIRATION: [' + count + '] object(s) expired');
+	Ti.API.info('[FSCACHE] Checking Files: [' + count + '] object(s) expired');
 };
 
 current_timestamp = function() {
 	var value = Math.floor(new Date().getTime() / 1000);
-	Ti.API.debug("[CACHE] current_timestamp=" + value);
+	Ti.API.info("[FSCACHE] Timestamp Update " + value);
 	return value;
 };
 
@@ -31,10 +31,10 @@ get = function(key) {
 	var rs = db.execute('SELECT value FROM cache WHERE key = ?', key);
 	var result = null;
 	if (rs.isValidRow()) {
-		Ti.API.info('[CACHE] HIT, key[' + key + ']');
+		Ti.API.info('[FSCACHE] File Reference HIT, key[' + key + ']');
 		result = JSON.parse(rs.fieldByName('value'));
 	} else {
-		Ti.API.info('[CACHE] MISS, key[' + key + ']');
+		Ti.API.info('[FSCACHE] File Reference MISS, key[' + key + ']');
 	}
 	rs.close();
 	db.close();
@@ -48,7 +48,7 @@ put = function(key, value, expiration_seconds) {
 	}
 	var expires_in = current_timestamp() + expiration_seconds;
 	var db = Titanium.Database.open('cache');
-	Ti.API.info('[CACHE] PUT: time=' + current_timestamp() + ', expires_in=' + expires_in);
+	Ti.API.info('[FSCACHE] File Reference PUT: time=' + current_timestamp() + ', expires_in=' + expires_in);
 	var query = 'INSERT OR REPLACE INTO cache (key, value, expiration) VALUES (?, ?, ?);';
 	db.execute(query, key, JSON.stringify(value), expires_in);
 	db.close();
@@ -56,24 +56,28 @@ put = function(key, value, expiration_seconds) {
 
 exports.process = function(url, time, name, callback) {
 	//Check if on Cache
-	var f = Ti.Filesystem.getFile(Ti.Filesystem.tempDirectory, name + '.txt');
+	var f = Ti.Filesystem.getFile(Ti.Filesystem.applicationDataDirectory, name + '.txt');
 	Ti.API.info("Called: url " + url + " time " + time + " name " + name);
 	if (!get(url)) {
 		if (f.exists()) {
 			f.deleteFile();
-			f.createFile();
 		}
-		Ti.API.info('[API PULL] REQUESTING ' + url);
+		Ti.API.info('[FSCACHE] REQUESTING ' + url);
 		//Start Network Connection
 		var xhr = Ti.Network.createHTTPClient();
 
 		xhr.onload = function(e) {
-			Ti.API.info("[API PULL] HTTP " + this.responseText);
+			Ti.API.info("[FSCACHE] Pull from Web " + this.responseText);
 			try {
 				put(url, name + '.txt', time);
-				f.write(this.responseText);
-				callback(JSON.parse(this.responseText));
-				//return JSON.parse(this.responseText);
+				var string = JSON.stringify(this.responseText);
+				if (!(/[^,:{}\[\]0-9.\-+Eaeflnr-u \n\r\t]/.test(string.replace(/"(\\.|[^"\\])*"/g, '')))) {
+					Ti.API.info("[FSCACHE] JSON TEST: VALID");
+					f.write(this.responseText);
+					callback(JSON.parse(this.responseText));
+				} else {
+					Ti.API.info("[FSCACHE] JSON TEST: INVALID, KILLING RETRIEVAL OPERATION");
+				}
 			} catch(e) {
 				//error happened
 				Ti.API.info(e);
@@ -82,21 +86,24 @@ exports.process = function(url, time, name, callback) {
 		xhr.open("GET", url);
 		xhr.send();
 	} else {
-		Ti.API.info('[API PULL] FileSystem ' + url);
+		Ti.API.info('[FSCACHE] Pull from FileSystem ' + name + ".txt");
 		var contents = f.read();
+		var contentsJSON = JSON.stringify(contents);
+		if (!(/[^,:{}\[\]0-9.\-+Eaeflnr-u \n\r\t]/.test(contentsJSON.replace(/"(\\.|[^"\\])*"/g, '')))) {
+			Ti.API.info("[FSCACHE] JSON TEST: VALID");
+			callback(JSON.parse(this.responseText));
+		} else {
+			Ti.API.info("[FSCACHE] JSON TEST: INVALID, KILLING RETRIEVAL OPERATION");
+		}
 		Ti.API.info("Inspecting Object: contents:" + contents);
 		for (var thing in contents) {
 			Ti.API.info("contents." + thing + " = " + contents[thing]);
 		}
-		callback(JSON.parse(contents.text));
 	}
 };
 
-
 //Starting Code
-var cache_expiration_interval = 60;
 var db = Titanium.Database.open('cache');
 db.execute('CREATE TABLE IF NOT EXISTS cache (key TEXT UNIQUE, value TEXT, expiration INTEGER)');
 db.close();
-Ti.API.info('[CACHE] INITIALIZED');
-Ti.API.info('[CACHE] Will expire objects each ' + cache_expiration_interval + ' seconds');
+setInterval(expire_cache, 60000); 
