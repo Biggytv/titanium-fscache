@@ -1,4 +1,4 @@
-//Functions
+0.//Functions
 expire_cache = function() {
 	var db = Titanium.Database.open('cache');
 	var timestamp = current_timestamp();
@@ -54,12 +54,16 @@ put = function(key, value, expiration_seconds) {
 	db.close();
 };
 
-exports.process = function(url, time, name, callback) {
+//Export Functons
+exports.process = function(url, time, name, callback2) {
+	Ti.API.info("1Callback " + callback2);
 	//Check if on Cache
 	var f = Ti.Filesystem.getFile(Ti.Filesystem.applicationDataDirectory, name + '.txt');
+	var contents = f.read();
 	Ti.API.info("Called: url " + url + " time " + time + " name " + name);
 	if (!get(url)) {
 		if (f.exists()) {
+			Ti.API.info("[FSCACHE] Outdated " + name + ".txt Exists, Deleting");
 			f.deleteFile();
 		}
 		Ti.API.info('[FSCACHE] REQUESTING ' + url);
@@ -74,31 +78,42 @@ exports.process = function(url, time, name, callback) {
 				if (!(/[^,:{}\[\]0-9.\-+Eaeflnr-u \n\r\t]/.test(string.replace(/"(\\.|[^"\\])*"/g, '')))) {
 					Ti.API.info("[FSCACHE] JSON TEST: VALID");
 					f.write(this.responseText);
-					callback(JSON.parse(this.responseText));
+					callback2(JSON.parse(this.responseText));
 				} else {
 					Ti.API.info("[FSCACHE] JSON TEST: INVALID, KILLING RETRIEVAL OPERATION");
 				}
 			} catch(e) {
-				//error happened
-				Ti.API.info(e);
+				try {
+					Ti.API.info("[FSCACHE] Error, Possibly With Parsing JSON, Attempting to Return Raw Text");
+					Ti.API.info(e);
+					callback2(this.responseText);
+				} catch(f) {
+					Ti.API.info("[FSCACHE] Error Returning Response Text, Retrieval Failed");
+					Ti.API.info(f);
+				}
 			}
 		};
 		xhr.open("GET", url);
 		xhr.send();
 	} else {
 		Ti.API.info('[FSCACHE] Pull from FileSystem ' + name + ".txt");
-		var contents = f.read();
+		Ti.API.info("[FSCACHE] Inspecting Object: contents:" + contents);
+		for (var thing in contents) {
+		  Ti.API.info("contents." + thing + " = " + contents[thing]);
+		}
 		var contentsJSON = JSON.stringify(contents);
 		if (!(/[^,:{}\[\]0-9.\-+Eaeflnr-u \n\r\t]/.test(contentsJSON.replace(/"(\\.|[^"\\])*"/g, '')))) {
-			Ti.API.info("[FSCACHE] JSON TEST: VALID");
-			callback(JSON.parse(this.responseText));
-		} else {
-			Ti.API.info("[FSCACHE] JSON TEST: INVALID, KILLING RETRIEVAL OPERATION");
-		}
-		Ti.API.info("Inspecting Object: contents:" + contents);
-		for (var thing in contents) {
-			Ti.API.info("contents." + thing + " = " + contents[thing]);
-		}
+			try {
+				Ti.API.info("[FSCACHE] Attempting to Return JSON");
+				callback2(JSON.parse(contents.text));
+			} catch(e) {
+				Ti.API.info("[FSCACHE] Failed, Returning Raw Text");
+				Ti.API.info(e);
+				callback2(contents.text);
+			}
+	} else {
+		Ti.API.info("[FSCACHE] JSON TEST: INVALID, KILLING RETRIEVAL OPERATION");
+	}
 	}
 };
 
@@ -106,4 +121,5 @@ exports.process = function(url, time, name, callback) {
 var db = Titanium.Database.open('cache');
 db.execute('CREATE TABLE IF NOT EXISTS cache (key TEXT UNIQUE, value TEXT, expiration INTEGER)');
 db.close();
-setInterval(expire_cache, 60000); 
+expire_cache();
+setInterval(expire_cache, 10000);
