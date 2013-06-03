@@ -21,7 +21,7 @@ var yourVariableNameHere = fsCache.process(url, time, fileName, callback);
 What is each variable that is passed in?
 url = The URL of the remote data source.
 time = The amount of time (in seconds) to keep the data stored on the device.
-fileName = The name of the file that will be saved on the file system.
+fileName = The name of the file that will be saved on the file system. There is no need to add a file extension, .txt is added automatically.
 callback = A function to be called after data retrieval is complete. The retrieved data will be passed into this function.
 
 What Does It Return?
@@ -29,3 +29,9 @@ What Does It Return?
 If you are retrieving a JSON array, fsCache will automatically parse this array for you and return it.
 
 If you are not retrieving a JSON array, or if there is an error parsing JSON, the data source's remote text will be returned unformatted. Therefore, fsCache is perfect for storing any type of text data.
+
+What If I Get An Error?
+================
+Before beginning data retrieval, the script will run some error checks to detect issues with the data passed to it. If something is wrong, it will throw an error and tell you, in plain English, what's wrong.
+
+If fsCache gives you the error "fsCache is unable to return data.", this is probably due to an invalid remote data source.
